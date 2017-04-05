@@ -92,7 +92,7 @@ def GetCommandHelp(sock, command, console_prompt):
         data.find("ERROR: Command Blocked from this console type.") > -1 or \
         data == "":
             return "No help available for this command."
-    search = re.findall(r"\?\r(.{5,1000})\r\n" + console_prompt + ">", data,
+    search = re.findall(r"\?\r(.{5," + str(len(data)) + "})\r\n" + console_prompt + ">", data,
                         re.M|re.S)
     if search:
         return search[0].replace(">", "&gt;").replace("<", "&lt;").strip()

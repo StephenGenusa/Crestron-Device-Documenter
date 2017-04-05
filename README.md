@@ -2,7 +2,9 @@
 Generates good looking HTML Documentation for normal and hidden Crestron device commands. 32-bit binary available from release page.
 
 ----------
+**April 4, 2016 - Important bugfix.** The regular expression I was using to capture the help explanations was too small for some important commands -- commands that were showing no help text in the initial release version. I realized the problem this evening and have uploaded the corrected source. I will upload an updated binary shortly.
 
+----------
 - Written using Python 2.7
 - Authentication is not currently supported.
 - The regex's may have to be tweaked for different devices. 
