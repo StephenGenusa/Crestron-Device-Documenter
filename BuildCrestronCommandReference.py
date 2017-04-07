@@ -84,10 +84,18 @@ def GetCommandHelp(sock, command, console_prompt):
         message = "\r\n"
     sock.sendall(message)
     data = ""
-    sleep(.05)
+    sleep(0.1)
+    waitcount = 0
     while not data.find(console_prompt) > -1:
+        # Deal with newer firmware that executes commands / doesn't return a prompt 
+        #   instead of printing help
+        sock.sendall("\r\n")
         data = data + sock.recv(1000)
         sleep(.05)
+        waitcount += 1
+        if waitcount > 10:
+            sock.sendall("\r\n")
+            waitcount =0
     if data.find("Authentication is not on. Command not allowed.") > -1 or \
         data.find("ERROR: Command Blocked from this console type.") > -1 or \
         data == "":
@@ -95,7 +103,7 @@ def GetCommandHelp(sock, command, console_prompt):
     search = re.findall(r"\?\r(.{5," + str(len(data)) + "})\r\n" + console_prompt + ">", data,
                         re.M|re.S)
     if search:
-        return search[0].replace(">", "&gt;").replace("<", "&lt;").strip()
+        return search[0].replace(">", "&gt;").replace("<", "&lt;").replace(console_prompt + ">", "").strip()
     else:
         return ""
 
