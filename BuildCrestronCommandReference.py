@@ -103,7 +103,7 @@ def GetCommandHelp(sock, command, console_prompt):
     search = re.findall(r"\?\r(.{5," + str(len(data)) + "})\r\n" + console_prompt + ">", data,
                         re.M|re.S)
     if search:
-        return search[0].replace(">", "&gt;").replace("<", "&lt;").replace(console_prompt + ">", "").strip()
+        return search[0].replace(console_prompt + ">", "").replace(">", "&gt;").replace("<", "&lt;").strip()
     else:
         return ""
 
