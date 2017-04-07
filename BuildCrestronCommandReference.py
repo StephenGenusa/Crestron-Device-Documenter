@@ -35,6 +35,7 @@ import sys
 import webbrowser
 from time import sleep
 
+BUF_SIZE = 9000
 
 def RemovePrompt(data, console_prompt, char_limit):
     prompt_pos = data.find(console_prompt+">")
@@ -48,11 +49,11 @@ def RemovePrompt(data, console_prompt, char_limit):
 def GetConsolePrompt(sock):
     CR = "\r\n"
     sock.sendall(CR)
-    data = sock.recv(200)
+    data = sock.recv(BUF_SIZE)
     CR = "\r\n"
     sock.sendall(CR)
     sleep(1)
-    data = data + sock.recv(200)
+    data = data + sock.recv(BUF_SIZE)
     search = re.findall("\r\n([\w-]{3,20})>", data, re.M)
     if search:
         return search[0]
@@ -64,7 +65,7 @@ def GetFirmwareVersion(sock, console_prompt):
     CR = "\r\nver\r\n"
     sock.sendall(CR)
     sleep(1)
-    data = sock.recv(200)
+    data = sock.recv(BUF_SIZE)
     search = re.findall("^" + console_prompt + ".*$", data, re.M)
     if search:
         return search[0]
@@ -89,9 +90,8 @@ def GetCommandHelp(sock, command, console_prompt):
     while not data.find(console_prompt) > -1:
         # Deal with newer firmware that executes commands / doesn't return a prompt 
         #   instead of printing help
-        data = data + sock.recv(9000)
-        sleep(.05)
-        sock.sendall("\r\n")
+        data = data + sock.recv(BUF_SIZE)
+        sleep(.1)
         waitcount += 1
         if waitcount > 10:
             sock.sendall("\r\n")
@@ -113,10 +113,10 @@ def GetCommandCategories(sock, console_prompt):
     message = '\r\nhidhelp\r\n'
     sock.sendall(message)
     sleep(1)
-    data = sock.recv(1000)
+    data = sock.recv(BUF_SIZE)
     data = data[12:]
     while data.find(console_prompt) == -1:
-        data = data + sock.recv(1000)
+        data = data + sock.recv(BUF_SIZE)
     category_list = []
     category_desc = []
     search = re.findall("^HELP ([A-Za-z]{2,20})\ will\ (.{10,100})$", data,
@@ -136,10 +136,10 @@ def GetCategorialCommandList(sock, console_prompt, command):
     message = '\r\nhidhelp ' + command + '\r\n'
     sock.sendall(message)
     sleep(1)
-    data = sock.recv(1000)
+    data = sock.recv(BUF_SIZE)
     data = data[len(message)+4:]
     while data.find(console_prompt) == -1:
-        data = data + sock.recv(1000)
+        data = data + sock.recv(BUF_SIZE)
     command_list = []
     help_desc = []
     search = re.findall("^(.{1,200})$", data, re.M)
@@ -161,11 +161,11 @@ def GetFullCommandList(sock, console_prompt):
     message = 'hidhelp all'
     sock.sendall("\r\n" + message + "\r\n")
     sleep(1)
-    data = sock.recv(1000)
+    data = sock.recv(BUF_SIZE)
     data = data.replace(message, "")
     data = RemovePrompt(data, console_prompt, 100)
     while data.find(console_prompt) == -1:
-        data = data + sock.recv(1000)
+        data = data + sock.recv(BUF_SIZE)
     data = data.replace(message, "")
     command_list = []
     help_desc = []
@@ -186,13 +186,13 @@ def GetCommandList(sock, console_prompt):
     message = 'help all'
     sock.sendall("\r\n" + message + "\r\n")
     sleep(1)
-    data = sock.recv(1000)
+    data = sock.recv(BUF_SIZE)
     data = data.replace(message, "")
     data = RemovePrompt(data, console_prompt, 100)
     command_list = []
     help_desc = []
     while data.find(console_prompt) == -1:
-        data = data + sock.recv(1000)
+        data = data + sock.recv(BUF_SIZE)
     command_list = []
     data = RemovePrompt(data, console_prompt, -1)
     search = re.findall("^(.{1,200})", data, re.M)
@@ -206,7 +206,7 @@ def GetCommandList(sock, console_prompt):
 
 
 if __name__ == "__main__":
-    print("\nStephen Genusa's Crestron Processor Command Documentation Builder 1.0\n")
+    print("\nStephen Genusa's Crestron Processor Command Documentation Builder 1.2\n")
     if len(sys.argv) >= 1:
         device_ip_address = sys.argv[1]
     else:
