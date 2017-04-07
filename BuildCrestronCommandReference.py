@@ -89,9 +89,9 @@ def GetCommandHelp(sock, command, console_prompt):
     while not data.find(console_prompt) > -1:
         # Deal with newer firmware that executes commands / doesn't return a prompt 
         #   instead of printing help
-        sock.sendall("\r\n")
-        data = data + sock.recv(1000)
+        data = data + sock.recv(9000)
         sleep(.05)
+        sock.sendall("\r\n")
         waitcount += 1
         if waitcount > 10:
             sock.sendall("\r\n")
