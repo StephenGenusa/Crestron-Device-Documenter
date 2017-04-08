@@ -93,9 +93,9 @@ def GetCommandHelp(sock, command, console_prompt):
         data = data + sock.recv(BUF_SIZE)
         sleep(.1)
         waitcount += 1
-        if waitcount > 10:
+        if waitcount = 5:
             sock.sendall("\r\n")
-            waitcount =0
+            waitcount = 0
     if data.find("Authentication is not on. Command not allowed.") > -1 or \
         data.find("ERROR: Command Blocked from this console type.") > -1 or \
         data == "":
@@ -226,7 +226,7 @@ if __name__ == "__main__":
 
         print("Console prompt is", console_prompt)
 
-        firmware_version = GetFirmwareVersion(sock, console_prompt)
+        #firmware_version = GetFirmwareVersion(sock, console_prompt)
 
         command_list, cmd_help_desc = GetCommandList(sock, console_prompt)
 
