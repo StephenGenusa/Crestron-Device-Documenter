@@ -35,7 +35,7 @@ import sys
 import webbrowser
 from time import sleep
 
-BUF_SIZE = 9000
+BUF_SIZE = 20000
 
 def RemovePrompt(data, console_prompt, char_limit):
     prompt_pos = data.find(console_prompt+">")
@@ -87,13 +87,17 @@ def GetCommandHelp(sock, command, console_prompt):
     data = ""
     sleep(0.1)
     waitcount = 0
+    sock.settimeout(1)
     while not data.find(console_prompt) > -1:
         # Deal with newer firmware that executes commands / doesn't return a prompt 
         #   instead of printing help
-        data = data + sock.recv(BUF_SIZE)
-        sleep(.1)
+        try:
+            sleep(0.1)
+            data = data + sock.recv(BUF_SIZE)
+        except:
+            sock.sendall("\r\n")
         waitcount += 1
-        if waitcount = 5:
+        if waitcount == 5:
             sock.sendall("\r\n")
             waitcount = 0
     if data.find("Authentication is not on. Command not allowed.") > -1 or \
@@ -135,7 +139,7 @@ def GetCategorialCommandList(sock, console_prompt, command):
     print ("\n\nGetting categorial commandset", command)
     message = '\r\nhidhelp ' + command + '\r\n'
     sock.sendall(message)
-    sleep(1)
+    sleep(.2)
     data = sock.recv(BUF_SIZE)
     data = data[len(message)+4:]
     while data.find(console_prompt) == -1:
@@ -195,13 +199,16 @@ def GetCommandList(sock, console_prompt):
         data = data + sock.recv(BUF_SIZE)
     command_list = []
     data = RemovePrompt(data, console_prompt, -1)
-    search = re.findall("^(.{1,200})", data, re.M)
+    if not data.find("\r\n"):
+        data = data.replace ("\r", "\r\n")
+    search = re.findall("^(.{1,200})$", data, re.MULTILINE)
     if search:
         for find in search:
             search2 = re.findall("^(\w{2,25})\ *(\w{8,20}|User\ or\ Connect)?\ *(.{1,120})$", find, re.M)
             if search2:
-                command_list.append(search2[0][0].strip())
-                help_desc.append(search2[0][2].strip())
+                if search2[0][0] not in command_list:
+                    command_list.append(search2[0][0].strip())
+                    help_desc.append(search2[0][2].strip())
     return command_list, help_desc
 
 
