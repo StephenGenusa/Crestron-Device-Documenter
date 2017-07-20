@@ -36,6 +36,7 @@ import webbrowser
 from time import sleep
 
 BUF_SIZE = 20000
+MAX_RETRIES = 3
 
 def RemovePrompt(data, console_prompt, char_limit):
     prompt_pos = data.find(console_prompt+">")
@@ -47,22 +48,21 @@ def RemovePrompt(data, console_prompt, char_limit):
 
 
 def GetConsolePrompt(sock):
-    CR = "\r\n"
-    sock.sendall(CR)
-    data = sock.recv(BUF_SIZE)
-    CR = "\r\n"
-    sock.sendall(CR)
-    sleep(1)
-    data = data + sock.recv(BUF_SIZE)
-    search = re.findall("\r\n([\w-]{3,20})>", data, re.M)
-    if search:
-        return search[0]
+    CR = "\r"
+    data = ""
+    for x in range(0, MAX_RETRIES):
+        sock.sendall(CR)
+        data = data + sock.recv(BUF_SIZE)
+        sleep(1)
+        search = re.findall("\r\n([\w-]{3,20})>", data, re.M)
+        if search:
+            return search[0]
     else:
         return ""
 
 
 def GetFirmwareVersion(sock, console_prompt):
-    CR = "\r\nver\r\n"
+    CR = "\rver\r"
     sock.sendall(CR)
     sleep(1)
     data = sock.recv(BUF_SIZE)
@@ -72,17 +72,17 @@ def GetFirmwareVersion(sock, console_prompt):
 
 
 def GetCommandHelp(sock, command, console_prompt):
-    message = command + ' ?\r\n'
+    message = command + ' ?\r'
     # The following three commands don't behave properly
     # Instead of giving help, they just just execute. The
     #  first requires a CR to terminate and the second
     #  generates a report
     if command == "DBGTRANSMITTER":
-        message += "\r\n"
+        message += "\r"
     if command == "REPORTPPNTABLe":
-        message = "\r\n"
+        message = "\r"
     if command == "LOGOFF":
-        message = "\r\n"
+        message = "\r"
     sock.sendall(message)
     data = ""
     sleep(0.1)
@@ -95,10 +95,10 @@ def GetCommandHelp(sock, command, console_prompt):
             sleep(0.1)
             data = data + sock.recv(BUF_SIZE)
         except:
-            sock.sendall("\r\n")
+            sock.sendall("\r")
         waitcount += 1
         if waitcount == 5:
-            sock.sendall("\r\n")
+            sock.sendall("\r")
             waitcount = 0
     if data.find("Authentication is not on. Command not allowed.") > -1 or \
         data.find("ERROR: Command Blocked from this console type.") > -1 or \
@@ -114,7 +114,7 @@ def GetCommandHelp(sock, command, console_prompt):
 
 def GetCommandCategories(sock, console_prompt):
     print ("Getting command categories")
-    message = '\r\nhidhelp\r\n'
+    message = '\rhidhelp\r'
     sock.sendall(message)
     sleep(1)
     data = sock.recv(BUF_SIZE)
@@ -137,7 +137,7 @@ def GetCommandCategories(sock, console_prompt):
 
 def GetCategorialCommandList(sock, console_prompt, command):
     print ("\n\nGetting categorial commandset", command)
-    message = '\r\nhidhelp ' + command + '\r\n'
+    message = '\r\hidhelp ' + command + '\r'
     sock.sendall(message)
     sleep(.2)
     data = sock.recv(BUF_SIZE)
@@ -163,7 +163,7 @@ def GetCategorialCommandList(sock, console_prompt, command):
 def GetFullCommandList(sock, console_prompt):
     print ("Getting Full Commandset")
     message = 'hidhelp all'
-    sock.sendall("\r\n" + message + "\r\n")
+    sock.sendall("\r" + message + "\r")
     sleep(1)
     data = sock.recv(BUF_SIZE)
     data = data.replace(message, "")
@@ -188,7 +188,7 @@ def GetFullCommandList(sock, console_prompt):
 def GetCommandList(sock, console_prompt):
     print ("Getting Normal Commandset")
     message = 'help all'
-    sock.sendall("\r\n" + message + "\r\n")
+    sock.sendall("\r" + message + "\r")
     sleep(1)
     data = sock.recv(BUF_SIZE)
     data = data.replace(message, "")
@@ -234,7 +234,8 @@ if __name__ == "__main__":
         print("Console prompt is", console_prompt)
 
         #firmware_version = GetFirmwareVersion(sock, console_prompt)
-
+        #print ("Firmware version is", firmware_version)
+        
         command_list, cmd_help_desc = GetCommandList(sock, console_prompt)
 
         full_command_list, help_desc = GetFullCommandList(sock, console_prompt)
