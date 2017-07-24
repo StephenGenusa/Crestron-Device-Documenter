@@ -2,7 +2,7 @@
 Generates good looking HTML Documentation for normal and hidden Crestron device commands. 32-bit binary available from release page.
 
 ----------
-June 12th, 2017 - Updated to handle new touchscreen firmware and RF gateway firmware that provide help in a slightly different format than other devices.
+July 23rd, 2017 - Largely rewritten to clean up the code and add new functionality in and conform to PEP8. The program will now take a second commandline parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist. I plan to do additional testing and cleanup.
 
 ----------
 - Written using Python 2.7
