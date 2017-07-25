@@ -35,6 +35,7 @@ import sys
 import textwrap
 import webbrowser
 from time import sleep
+#import hexdump
 
 BUFF_SIZE = 20000
 MAX_RETRIES = 3
@@ -104,9 +105,11 @@ class CrestronDeviceDocumenter(object):
         data = ""
         for _unused in range(0, MAX_RETRIES):
             self.sock.sendall(CR)
-            data = data + self.sock.recv(BUFF_SIZE)
-            sleep(1)
-            search = re.findall(r"\r\n([\w-]{3,30})>", data, re.M)
+            sleep(.5)
+            self.sock.sendall(CR)
+            sleep(.5)
+            data += self.sock.recv(BUFF_SIZE)
+            search = re.findall("\r\n([\w-]{3,30})>", data, re.M)
             if search:
                 self.console_prompt = search[0]
                 self.unpublished_commands_filename = self.console_prompt + ".upc"
@@ -153,7 +156,6 @@ class CrestronDeviceDocumenter(object):
             if waitcount == 5:
                 self.sock.sendall(CR)
                 waitcount = 0
-            #print (data, waitcount)
         return data
 
 
@@ -162,12 +164,10 @@ class CrestronDeviceDocumenter(object):
         Get the firmware version of the device
         """
         data = self.send_command_wait_prompt("ver", 40)
-        #self.print_debug_data(data, "get_firmware_version")
         search = re.findall("^" + self.console_prompt + ".*$", data, re.M)
         if search:
             data = self.remove_prompt(search[0], 100)
             self.firmwareversion = data[4:].strip()
-            #self.print_debug_data(self.firmwareversion, "self.firmwareversion")
 
 
     def get_command_help(self, command):
@@ -255,7 +255,6 @@ class CrestronDeviceDocumenter(object):
         data = data.replace(message, "")
         data = self.remove_prompt(data, 100)
         data = self.remove_prompt(data, -1)
-
         if not data.find("\r\n"):
             data = data.replace("\r", "\r\n")
         search = re.findall("^(.{1,200})$", data, re.MULTILINE)
@@ -268,7 +267,7 @@ class CrestronDeviceDocumenter(object):
                         self.pub_command_list.append(command)
                         self.help_dict[command] = search2[0][2].strip()
         print("Found", len(self.pub_command_list), "Normal commands")
-        #self.print_debug_data(self.pub_command_list, "pub_command_list")
+
 
     def get_hidden_command_list(self):
         """
@@ -302,9 +301,7 @@ class CrestronDeviceDocumenter(object):
             with open(self.possible_commands_filename, "r") as cmd_list_file:
                 for line in iter(cmd_list_file):
                     cmd = line.strip().split(" ")[0].strip()
-                    #print(cmd)
                     poss_list.append(cmd)
-            #print(poss_list)
             uniq_cmds = set(poss_list)
             poss_list = list(uniq_cmds)
             poss_list.sort()

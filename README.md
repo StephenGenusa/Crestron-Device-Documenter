@@ -2,7 +2,17 @@
 Generates good looking HTML Documentation for normal and hidden Crestron device commands. 32-bit binary available from release page.
 
 ----------
-July 23rd, 2017 - Largely rewritten to clean up the code and add new functionality in and conform to PEP8. The program will now take a second commandline parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist. I plan to do additional testing and cleanup.
+July 23rd, 2017 - Largely rewritten to clean up the code, add new functionality and better conformance to PEP 8.
+
+The program will now take a second command-line parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist. 
+
+July 24th, 2017 - Fixed get\_console\_prompt to work with variety of additional devices.
+
+Planned Changes:
+
+ - I plan to do additional testing and cleanup
+ - I have a plan to expedite parsing help on a variety of currently unsupported devices
+ - Automatically locate most Crestron devices using broadcast
 
 ----------
 - Written using Python 2.7
