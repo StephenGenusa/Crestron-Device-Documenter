@@ -105,19 +105,16 @@ class CrestronDeviceDocumenter(object):
         data = ""
         for _unused in range(0, MAX_RETRIES):
             self.sock.sendall(CR)
-            sleep(.5)
-            self.sock.sendall(CR)
-            sleep(.5)
-            data += self.sock.recv(BUFF_SIZE)
-            search = re.findall("\r\n([\w-]{3,30})>", data, re.M)
+            data = data + self.sock.recv(BUFF_SIZE)
+            sleep(.25)
+            search = re.findall(r"\r\n([\w-]{3,30})>", data, re.M)
             if search:
                 self.console_prompt = search[0]
                 self.unpublished_commands_filename = self.console_prompt + ".upc"
                 print("\nConsole prompt is", self.console_prompt)
                 return
-            else:
-                print("Console prompt not found.")
-                exit()
+        print("Console prompt not found.")
+        exit()
 
 
     def remove_prompt(self, data, char_limit):
