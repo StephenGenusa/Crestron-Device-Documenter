@@ -257,7 +257,7 @@ class CrestronDeviceDocumenter(object):
         search = re.findall("^(.{1,200})$", data, re.MULTILINE)
         if search:
             for find in search:
-                search2 = re.findall(r"^(\w{2,25})\ *(\w{8,20}|User\ or\ Connect)?\ *(.{1,120})$", find, re.M)
+                search2 = re.findall(r"^(\w{2,25})\ *(Programmer|Operator|Administrator|User\ or\ Connect)?\ *(.{1,120})$", find, re.M)
                 if search2:
                     command = search2[0][0].strip()
                     if command not in self.pub_command_list:
@@ -280,7 +280,7 @@ class CrestronDeviceDocumenter(object):
             search = re.findall("^(.{1,200})$", data, re.M)
             if search:
                 for find in search:
-                    search2 = re.findall(r"^(\w{2,25})\ *(\w{8,20}|User\ or\ Connect)?\ *?(.{1,120})$", find, re.M)
+                    search2 = re.findall(r"^(\w{2,25})\ *(Programmer|Operator|Administrator|User\ or\ Connect)?\ *(.{1,120})$", find, re.M)
                     if search2:
                         command = search2[0][0].strip()
                         self.hidden_command_list.append(command)
