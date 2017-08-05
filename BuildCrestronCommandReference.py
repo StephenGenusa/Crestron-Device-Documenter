@@ -61,6 +61,7 @@ class CrestronDeviceDocumenter(object):
         self.unpublished_command_list = []
         self.htmldocfilename = ""
         self.possible_commands_filename = possible_commands_filename
+        self.preseed_commands_filename = "preseed.upc"
         self.unpublished_commands_filename = ""
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -177,11 +178,13 @@ class CrestronDeviceDocumenter(object):
         #  first requires a CR to terminate and the second
         #  generates a report
         if command == "DBGTRANSMITTER":
-            message += "\r"
+            return "Sets or clears Debug flags for IR/RF Transmitter"
         if command == "REPORTPPNTABLe":
-            message = "\r"
+            return "Displays Cresnet PPN table if available"
         if command == "LOGOFF":
-            message = "\r"
+            return "Logs the currently authenticated user out of the system"
+        if command.upper() == "MACADDRESS":
+            return "Returns the MAC address of the built-in NIC"
         data = self.send_command_wait_prompt(message, 30)
         if data.find("Bad or Incomplete Command") > -1:
             return ""
@@ -286,23 +289,6 @@ class CrestronDeviceDocumenter(object):
                         self.hidden_command_list.append(command)
                         self.help_dict[command] = search2[0][2].strip()
         print("Found", len(self.hidden_command_list)-len(self.pub_command_list), "Hidden commands")
-        #self.print_debug_data(self.hidden_command_list, "hidden_command_list")
-
-
-    def load_possible_command_list(self):
-        """
-        Load possible commands from a text file
-        """
-        poss_list = []
-        if os.path.isfile(self.possible_commands_filename):
-            with open(self.possible_commands_filename, "r") as cmd_list_file:
-                for line in iter(cmd_list_file):
-                    cmd = line.strip().split(" ")[0].strip()
-                    poss_list.append(cmd)
-            uniq_cmds = set(poss_list)
-            poss_list = list(uniq_cmds)
-            poss_list.sort()
-            return poss_list
 
 
     def save_unpublished_command_list(self):
@@ -322,14 +308,39 @@ class CrestronDeviceDocumenter(object):
         command_exists = False
         command1_help = self.get_command_help(command1)
         for cmd_known in complete_command_list:
-            if command1.upper() == cmd_known[:len(command1)].upper():
+            if cmd_known.upper() == command1.upper():
+                command_exists = True
+            elif command1.upper() == cmd_known[:len(command1)].upper() or \
+               cmd_known.upper() == command1[:len(cmd_known)].upper():
                 command2_help = self.get_command_help(cmd_known)
                 if len(command1_help) == len(command2_help):
                     command_exists = True
         if not command_exists and command1_help:
-            self.unpublished_command_list.append(command1)
-            self.help_dict[command1] = ""
-            print("Found", command1)
+            if command1 not in self.unpublished_command_list:
+                self.unpublished_command_list.append(command1)
+                self.help_dict[command1] = ""
+                print("Found", command1)
+
+
+    def load_possible_command_list(self):
+        """
+        Load possible commands from a text file
+        """
+        poss_list = []
+        if os.path.isfile(self.possible_commands_filename):
+            print ("Loading and parsing possible commands")
+            with open(self.possible_commands_filename, "r") as cmd_list_file:
+                for line in iter(cmd_list_file):
+                    cmd = line.strip().split(" ")[0].strip().upper()
+                    if cmd:
+                        poss_list.append(cmd)
+            uniq_cmds = set(poss_list)
+            poss_list = list(uniq_cmds)
+            poss_list.sort()
+            with open(self.possible_commands_filename, "w") as cmd_list_file:
+                for cmd in poss_list:
+                    cmd_list_file.write(cmd + "\n")
+            return poss_list
 
 
     def test_for_unpublished_commands(self):
@@ -341,13 +352,27 @@ class CrestronDeviceDocumenter(object):
         if self.hidden_command_list:
             complete_command_list.extend(self.hidden_command_list)
 
-        if os.path.isfile(self.unpublished_commands_filename):
+        # Load the possible commands file
+        poss_cmds = self.load_possible_command_list()
+        if not poss_cmds:
             poss_cmds = []
+
+        # Load the device specific existing unpublished commands file, if it exists
+        if os.path.isfile(self.unpublished_commands_filename):
             with open(self.unpublished_commands_filename, "r") as cmd_list_file:
                 for line in iter(cmd_list_file):
-                    poss_cmds.append(line.strip())
-        else:
-            poss_cmds = self.load_possible_command_list()
+                    a_cmd = line.strip()
+                    if a_cmd:
+                        poss_cmds.insert(0, a_cmd)
+
+        # Preseed with known unpublished commands file, it if exists
+        if os.path.isfile(self.preseed_commands_filename):
+            with open(self.preseed_commands_filename, "r") as cmd_list_file:
+                for line in iter(cmd_list_file):
+                    a_cmd = line.strip()
+                    if a_cmd:
+                        poss_cmds.insert(0, a_cmd)
+
         if poss_cmds:
             print("Testing for Unpublished commands")
             for cmd in poss_cmds:
@@ -458,7 +483,7 @@ class CrestronDeviceDocumenter(object):
 
 if __name__ == "__main__":
     # pylint: disable-msg=C0103
-    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.5\n")
+    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.6\n")
     if len(sys.argv) >= 1:
         DeviceIPAddress = sys.argv[1]
         TestCmdFilename = ""
