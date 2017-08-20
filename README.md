@@ -8,6 +8,11 @@ July 2017
 - The program will now take a second command-line parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist.
 - Regex improvement so that more devices are now supported
 
+August 2017
+
+- Firmware version regex improved
+- Additional refactoring of code to cleanup code
+- General help capture regex improved to handle more devices
 
 To Do:
 

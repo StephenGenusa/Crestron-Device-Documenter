@@ -36,6 +36,7 @@ import textwrap
 import webbrowser
 from time import sleep
 #import hexdump
+#import pprint
 
 BUFF_SIZE = 20000
 MAX_RETRIES = 3
@@ -58,6 +59,7 @@ class CrestronDeviceDocumenter(object):
         self.help_dict = {}
         self.pub_command_list = []
         self.hidden_command_list = []
+        self.preseed_command_list = []
         self.unpublished_command_list = []
         self.htmldocfilename = ""
         self.possible_commands_filename = possible_commands_filename
@@ -65,14 +67,28 @@ class CrestronDeviceDocumenter(object):
         self.unpublished_commands_filename = ""
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
+    
+    def place_on_win_clipboard(self, text_to_clipboard):
+        """
+        For testing of regular expressions
+        """
+        from Tkinter import Tk
+        r = Tk()
+        r.withdraw()
+        r.clipboard_clear()
+        r.clipboard_append(text_to_clipboard)
+        r.update()
+        r.destroy()
 
+    
     def print_debug_data(self, data, msg):
         """
-        debug debug
+        debug printing of data
         """
         print("*" * 35, msg, "*" * 35)
         print(data)
         print("*" * 35, msg, "*" * 35)
+        print("\n")
 
 
     def open_device_connection(self):
@@ -162,10 +178,11 @@ class CrestronDeviceDocumenter(object):
         Get the firmware version of the device
         """
         data = self.send_command_wait_prompt("ver", 40)
-        search = re.findall("^" + self.console_prompt + ".*$", data, re.M)
+        data = data.replace(self.console_prompt + ">", "")
+        search = re.search(r"[\r\n]{1,2}([\w\[\]\.\ \(\),#@-]{20,90})[\r\n]{1,2}", data, re.MULTILINE)
         if search:
-            data = self.remove_prompt(search[0], 100)
-            self.firmwareversion = data[4:].strip()
+            self.firmwareversion = search.group().strip()
+            print("Firmware version ", self.firmwareversion)
 
 
     def get_command_help(self, command):
@@ -183,7 +200,7 @@ class CrestronDeviceDocumenter(object):
             return "Displays Cresnet PPN table if available"
         if command == "LOGOFF":
             return "Logs the currently authenticated user out of the system"
-        if command.upper() == "MACADDRESS":
+        if command.upper() in ["MACADDRESS", "MACA"]:
             return "Returns the MAC address of the built-in NIC"
         data = self.send_command_wait_prompt(message, 30)
         if data.find("Bad or Incomplete Command") > -1:
@@ -192,11 +209,12 @@ class CrestronDeviceDocumenter(object):
            data.find("ERROR: Command Blocked from this console type.") > -1 or \
            data == "":
             return "No help available for this command."
-        search = re.findall(r"\?\r(.{5," + str(len(data)) + "})\r\n" + \
+        search = re.findall(r"[\r\n]{1,2}(.{5," + str(len(data)) + "})[\r\n]{1,2}" + \
                  self.console_prompt + ">", data, re.M|re.S)
         if search:
             help_text = search[0].replace(self.console_prompt + ">", ""). \
-                        replace(">", "&gt;").replace("<", "&lt;").strip()
+                        replace(">", "&gt;").replace("<", "&lt;")
+            help_text = help_text[len(message) + 2:]
             reformatted_help_text = ""
             for line in help_text.split("\n"):
                 reformatted_help_text += textwrap.fill(line, 150) + "\n"
@@ -245,27 +263,35 @@ class CrestronDeviceDocumenter(object):
                 print("[None]")
 
 
+    def get_help_list(self, help_command, command_list, command_dict):
+        """
+        Get a list of the normal/published commands
+        """
+        data = self.send_command_wait_prompt(help_command, 30)
+        data = data.replace(help_command, "")
+        data = self.remove_prompt(data, 100)
+        data = self.remove_prompt(data, -1)
+        if data.find("\r\n"):
+            data = data.replace("\r\n", "\r").replace("\r", "\n")
+        if data.find("Bad") > -1 or data.find("Incomplete Command") > -1:
+            return
+        search = re.findall(r"\n(.{1,200}?)(?=\n)", data, re.MULTILINE)
+        if search:
+            for find in search:
+                search2 = re.findall(r"(\w{2,25})\ *(Programmer|Operator|Administrator|User\ or\ Connect)?\ *(.{1,120})", find, re.MULTILINE)
+                if search2:
+                    command = search2[0][0].strip()
+                    if command not in command_list and command <> "Add":
+                        command_list.append(command)
+                        command_dict[command] = search2[0][2].strip()
+    
+
     def get_published_command_list(self):
         """
         Get a list of the normal/published commands
         """
         print("Getting Normal Commandset")
-        message = "help all"
-        data = self.send_command_wait_prompt(message, 30)
-        data = data.replace(message, "")
-        data = self.remove_prompt(data, 100)
-        data = self.remove_prompt(data, -1)
-        if not data.find("\r\n"):
-            data = data.replace("\r", "\r\n")
-        search = re.findall("^(.{1,200})$", data, re.MULTILINE)
-        if search:
-            for find in search:
-                search2 = re.findall(r"^(\w{2,25})\ *(Programmer|Operator|Administrator|User\ or\ Connect)?\ *(.{1,120})$", find, re.M)
-                if search2:
-                    command = search2[0][0].strip()
-                    if command not in self.pub_command_list:
-                        self.pub_command_list.append(command)
-                        self.help_dict[command] = search2[0][2].strip()
+        self.get_help_list("help all", self.pub_command_list, self.help_dict)
         print("Found", len(self.pub_command_list), "Normal commands")
 
 
@@ -273,22 +299,10 @@ class CrestronDeviceDocumenter(object):
         """
         Get a list of the hidden commands
         """
-        print("Getting Hidden Commandset")
-        message = "hidhelp all"
-        data = self.send_command_wait_prompt(message, 30)
-        data = data.replace(message, "")
-        data = self.remove_prompt(data, 100)
-        data = self.remove_prompt(data, -1)
-        if data.find("Bad or") == -1:
-            search = re.findall("^(.{1,200})$", data, re.M)
-            if search:
-                for find in search:
-                    search2 = re.findall(r"^(\w{2,25})\ *(Programmer|Operator|Administrator|User\ or\ Connect)?\ *(.{1,120})$", find, re.M)
-                    if search2:
-                        command = search2[0][0].strip()
-                        self.hidden_command_list.append(command)
-                        self.help_dict[command] = search2[0][2].strip()
-        print("Found", len(self.hidden_command_list)-len(self.pub_command_list), "Hidden commands")
+        print("Getting Hidden Commandset (if available)")
+        self.get_help_list("hidhelp all", self.hidden_command_list, self.help_dict)
+        if self.hidden_command_list:
+            print("Found", len(self.hidden_command_list)-len(self.pub_command_list), "Hidden commands")
 
 
     def save_unpublished_command_list(self):
@@ -331,13 +345,16 @@ class CrestronDeviceDocumenter(object):
             print ("Loading and parsing possible commands")
             with open(self.possible_commands_filename, "r") as cmd_list_file:
                 for line in iter(cmd_list_file):
-                    cmd = line.strip().split(" ")[0].strip().upper()
-                    if cmd:
-                        poss_list.append(cmd)
+                    cmds = line.strip().upper()
+                    cmds = re.split(r"([\w]+)", cmds)
+                    #print (cmds)
+                    if cmds:
+                        for cmd in cmds:
+                            poss_list.append(cmd)
             uniq_cmds = set(poss_list)
             poss_list = list(uniq_cmds)
             poss_list.sort()
-            with open(self.possible_commands_filename, "w") as cmd_list_file:
+            with open("a_" + self.possible_commands_filename, "w") as cmd_list_file:
                 for cmd in poss_list:
                     cmd_list_file.write(cmd + "\n")
             return poss_list
@@ -426,10 +443,12 @@ class CrestronDeviceDocumenter(object):
         htmlfile.write("<blockquote>\n")
         htmlfile.write("<p style=\"font-size:12px\">" + self.firmwareversion + "</p>\n")
         htmlfile.write("<p>" + str(len(self.pub_command_list)) +
-                       " normal commands found. <font color=\"" +
-                       special_command_color + "\">" +
-                       str(len(self.hidden_command_list)-len(self.pub_command_list)) +
-                       "</font> hidden commands available. ")
+                       " normal commands found.&nbsp;")
+                       
+        if self.hidden_command_list:
+            htmlfile.write("<font color=\"" + special_command_color + "\">" + 
+                           str(len(self.hidden_command_list)-len(self.pub_command_list)) +
+                           "</font> hidden commands available.&nbsp;")
         if self.unpublished_command_list:
             htmlfile.write(" <font color=\"" + unpublished_command_color + "\">" +
                            str(len(self.unpublished_command_list)) +
