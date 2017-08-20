@@ -214,7 +214,8 @@ class CrestronDeviceDocumenter(object):
         if search:
             help_text = search[0].replace(self.console_prompt + ">", ""). \
                         replace(">", "&gt;").replace("<", "&lt;")
-            help_text = help_text[len(message) + 2:]
+            if help_text.find(message, 1, 30) > -1:
+                help_text = help_text[len(message) + 2:]
             reformatted_help_text = ""
             for line in help_text.split("\n"):
                 reformatted_help_text += textwrap.fill(line, 150) + "\n"
@@ -502,7 +503,7 @@ class CrestronDeviceDocumenter(object):
 
 if __name__ == "__main__":
     # pylint: disable-msg=C0103
-    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.6\n")
+    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.7\n")
     if len(sys.argv) >= 1:
         DeviceIPAddress = sys.argv[1]
         TestCmdFilename = ""
