@@ -1,5 +1,5 @@
 # Crestron Device Command Documenter
-Generates good looking HTML Documentation for normal and hidden Crestron device commands. 32-bit binary available from release page.
+Generates good looking HTML Documentation for normal and hidden Crestron device commands. Precompiled binary available from release page.
 
 ----------
 July 2017
