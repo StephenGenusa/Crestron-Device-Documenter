@@ -28,13 +28,18 @@ POSSIBILITY OF SUCH DAMAGE.
 """
 
 from __future__ import print_function
+import argparse
 import os
 import re
+import re
 import socket
+import subprocess
 import sys
 import textwrap
 import webbrowser
 from time import sleep
+#
+import netifaces
 #import hexdump
 #import pprint
 
@@ -49,23 +54,27 @@ class CrestronDeviceDocumenter(object):
     """
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self, device_ip_address, possible_commands_filename):
+    def __init__(self, args):
         """
         initialize internal properties
         """
-        self.device_ip_address = device_ip_address
+        self.active_ips_to_check = []
+        if args.iptocheck:
+            self.active_ips_to_check.append(args.iptocheck)
+        self.preseed_command_list = []
+        self.possible_commands_filename = args.addtestcommands
+        self.preseed_commands_filename = "preseed.upc"
+        self.args = args
+
+    def initialize_run_variables(self):
         self.console_prompt = ""
         self.firmwareversion = ""
         self.help_dict = {}
         self.pub_command_list = []
         self.hidden_command_list = []
-        self.preseed_command_list = []
         self.unpublished_command_list = []
         self.htmldocfilename = ""
-        self.possible_commands_filename = possible_commands_filename
-        self.preseed_commands_filename = "preseed.upc"
         self.unpublished_commands_filename = ""
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     
     def place_on_win_clipboard(self, text_to_clipboard):
@@ -90,18 +99,68 @@ class CrestronDeviceDocumenter(object):
         print("*" * 35, msg, "*" * 35)
         print("\n")
 
+        
+    def build_list_of_activeips(self, subnet):
+        """
+        Build a list of devices that respond to ping for a /24 subnet like 17.1.6.{1}:
+        """
+        print ("Building list of active IP addresses on subnet {0}\nPlease wait...".format(subnet))
+        with open(os.devnull, "wb") as limbo:
+            for last_octet in xrange(1, 255):
+                ip = "{0}.{1}".format(subnet, last_octet)
+                result=subprocess.Popen(["ping", "-n", "1", "-w", "200", ip],
+                        stdout=limbo, stderr=limbo).wait()
+                if not result:
+                    self.active_ips_to_check.append(ip)
+            if self.active_ips_to_check:
+                print("{0} active IPs found on subnet".format(len(self.active_ips_to_check)))
 
+    def build_list_of_crestronips(self):
+        """
+        Build a list of Crestron devices that respond to a UDP message
+        """
+        BROADCAST_IP = '255.255.255.255'
+        CIP_PORT = 41794
+        UDP_MSG = "\x14\x00\x00\x00\x01\x04\x00\x03\x00\x00\x66\x65\x65\x64" + \
+            ("\x00" * 252)
+        for iface in netifaces.interfaces():
+            if netifaces.AF_INET in netifaces.ifaddresses(iface):
+                if 'addr' in netifaces.ifaddresses(iface)[netifaces.AF_INET][0]:
+                    cur_ip = netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr']
+                    print("Testing IP subnet", cur_ip)
+                    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    udp_sock.bind((cur_ip, CIP_PORT))
+                    udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    udp_sock.sendto(UDP_MSG, (BROADCAST_IP, CIP_PORT))
+                    udp_sock.settimeout(2.0)
+                    try:
+                        while True:
+                            data, addr = udp_sock.recvfrom(4096)
+                            search = re.findall ('\x00([a-zA-Z0-9-]{2,30})\x00', data[9:40])
+                            if search:
+                                dev_name = search[0]
+                                dev_ip = addr[0]
+                                if cur_ip != dev_ip and dev_ip not in self.active_ips_to_check and dev_name is not "feed":
+                                    self.active_ips_to_check.append(dev_ip)
+                    except:
+                        pass
+        print("\nLocated a total of", len(self.active_ips_to_check), "Crestron devices")
+
+                
     def open_device_connection(self):
         """
         Open the device connection, attempting port 41795
         """
         try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_address = (self.device_ip_address, 41795)
             print("Attempting to connect to %s port %s" % server_address)
             self.sock.connect(server_address)
+            return True
         except:
             print("Error: Unable to connect to device.")
-            exit()
+        return False
 
 
     def close_device_connection(self):
@@ -130,8 +189,7 @@ class CrestronDeviceDocumenter(object):
                 self.unpublished_commands_filename = self.console_prompt + ".upc"
                 print("\nConsole prompt is", self.console_prompt)
                 return
-        print("Console prompt not found.")
-        exit()
+        print("Console prompt not found on device.")
 
 
     def remove_prompt(self, data, char_limit):
@@ -203,7 +261,7 @@ class CrestronDeviceDocumenter(object):
         if command.upper() in ["MACADDRESS", "MACA"]:
             return "Returns the MAC address of the built-in NIC"
         data = self.send_command_wait_prompt(message, 30)
-        if data.find("Bad or Incomplete Command") > -1:
+        if data.upper().find("BAD COMM") > -1 or data.upper().find("INCOMPLETE COMM") > -1:
             return ""
         if data.find("Authentication is not on. Command not allowed.") > -1 or \
            data.find("ERROR: Command Blocked from this console type.") > -1 or \
@@ -315,11 +373,32 @@ class CrestronDeviceDocumenter(object):
                 cmd_file.writelines(["%s\n" % item for item in self.unpublished_command_list])
 
 
+    def load_preseed_command_list(self):
+        """
+        Load the preseed unpublished command list
+        """
+        if os.path.isfile(self.preseed_commands_filename):
+            with open(self.preseed_commands_filename, "r") as cmd_file:
+                upc_lines = cmd_file.readlines()
+                self.preseed_command_list = [item.strip() for item in upc_lines if item.strip != ""]
+
+
+    def save_preseed_command_list(self):
+        """
+        Save the unpublished commands for reuse
+        """
+        if self.preseed_command_list:
+            with open(self.preseed_commands_filename, "w") as cmd_file:
+                cmd_file.writelines(["%s\n" % item for item in self.preseed_command_list])
+
+
     def test_if_command_exists(self, complete_command_list, command1):
         """
         Test if the command exists
         """
         command1 = command1.strip()
+        if not command1:
+            return
         command_exists = False
         command1_help = self.get_command_help(command1)
         for cmd_known in complete_command_list:
@@ -331,10 +410,13 @@ class CrestronDeviceDocumenter(object):
                 if len(command1_help) == len(command2_help):
                     command_exists = True
         if not command_exists and command1_help:
+            if command1 not in self.preseed_command_list:
+                self.preseed_command_list.append(command1)
             if command1 not in self.unpublished_command_list:
                 self.unpublished_command_list.append(command1)
                 self.help_dict[command1] = ""
-                print("Found", command1)
+                print(command1 + " ", end="")
+                sys.stdout.flush()
 
 
     def load_possible_command_list(self):
@@ -388,7 +470,7 @@ class CrestronDeviceDocumenter(object):
             with open(self.preseed_commands_filename, "r") as cmd_list_file:
                 for line in iter(cmd_list_file):
                     a_cmd = line.strip()
-                    if a_cmd:
+                    if a_cmd and a_cmd not in poss_cmds:
                         poss_cmds.insert(0, a_cmd)
 
         if poss_cmds:
@@ -397,8 +479,9 @@ class CrestronDeviceDocumenter(object):
                 self.test_if_command_exists(complete_command_list, cmd)
             self.unpublished_command_list.sort()
             self.save_unpublished_command_list()
+            self.save_preseed_command_list()
         if self.unpublished_command_list:
-            print("Found", len(self.unpublished_command_list), "Unpublished commands")
+            print("\nFound", len(self.unpublished_command_list), "Unpublished commands")
 
 
     def write_html_documentation(self):
@@ -408,7 +491,7 @@ class CrestronDeviceDocumenter(object):
         if not self.pub_command_list and not self.hidden_command_list and \
            not self.unpublished_command_list:
             print("Help commands not found on this device.")
-            exit()
+            return
 
         complete_command_list = []
         complete_command_list.extend(self.pub_command_list)
@@ -429,7 +512,7 @@ class CrestronDeviceDocumenter(object):
         pagetitle = "Commandset for the " + self.console_prompt
         htmlfile.write("<!DOCTYPE HTML>\n")
         htmlfile.write("<html>\n")
-        htmlfile.write("<head>  <title>" + pagetitle +
+        htmlfile.write("<head>\n  <title>" + pagetitle +
                        "</title>\n  <meta name=\"utility_author\" content=\"Stephen Genusa\">\n")
         htmlfile.write("  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n")
         htmlfile.write("  <style type=\"text/css\">\n")
@@ -451,7 +534,7 @@ class CrestronDeviceDocumenter(object):
                            str(len(self.hidden_command_list)-len(self.pub_command_list)) +
                            "</font> hidden commands available.&nbsp;")
         if self.unpublished_command_list:
-            htmlfile.write(" <font color=\"" + unpublished_command_color + "\">" +
+            htmlfile.write("<font color=\"" + unpublished_command_color + "\">" +
                            str(len(self.unpublished_command_list)) +
                            " unpublished commands available.</font>")
         htmlfile.write("</p>\n")
@@ -464,12 +547,15 @@ class CrestronDeviceDocumenter(object):
         for command in complete_command_list:
             if command in self.unpublished_command_list:
                 color = unpublished_command_color
+                class_name = "unpub"
             elif command in self.pub_command_list:
                 color = "#000000"
+                class_name = "pub"
             else:
                 color = special_command_color
+                class_name = "hid"
             command_help = self.get_command_help(command)
-            htmlfile.write("<tr bgcolor=\"#C0C0C0\">\n  <th width=\"20%\"><font color=\"" +
+            htmlfile.write("<tr class=\"" + class_name + "\" bgcolor=\"#C0C0C0\">\n  <th width=\"20%\"><font color=\"" +
                            color + "\">" + command +
                            "</font></th>\n  <th align=\"left\"><font color=\"" +
                            color + "\">&nbsp;" + self.help_dict[command] +
@@ -479,39 +565,51 @@ class CrestronDeviceDocumenter(object):
             print("(" + str(itemcounter+1) + ")" + command + " ", end="")
             sys.stdout.flush()
             itemcounter += 1
-        htmlfile.write("</table>\n</font>\n</body>\n</html>")
+        htmlfile.write("</table>\n</font>\n")
+        htmlfile.write("</body>\n</html>")
 
 
     def generate_documentation(self):
         """
         Generate device documentation
         """
-        self.open_device_connection()
-        try:
-            self.get_console_prompt()
-            self.get_firmware_version()
-            self.get_published_command_list()
-            self.get_hidden_command_list()
-            self.test_for_unpublished_commands()
-            self.write_html_documentation()
-
-        finally:
-            self.close_device_connection()
-            if os.path.isfile(os.path.realpath(self.htmldocfilename)):
-                webbrowser.open_new_tab("file://" + os.path.realpath(self.htmldocfilename))
+        self.load_preseed_command_list()
+        if self.args.autolocatecrestron:
+            self.build_list_of_crestronips()
+        elif self.args.autolocateactiveips:
+            self.build_list_of_activeips(self.args.autolocateactiveips)
+        for ip in self.active_ips_to_check:
+            self.device_ip_address = ip
+            self.initialize_run_variables()
+            if self.open_device_connection():
+                try:
+                    self.get_console_prompt()
+                    self.get_firmware_version()
+                    self.get_published_command_list()
+                    self.get_hidden_command_list()
+                    self.test_for_unpublished_commands()
+                    self.write_html_documentation()
+                finally:
+                    self.close_device_connection()
+                    if os.path.isfile(os.path.realpath(self.htmldocfilename)):
+                        webbrowser.open_new_tab("file://" + os.path.realpath(self.htmldocfilename))
 
 
 if __name__ == "__main__":
     # pylint: disable-msg=C0103
-    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.7\n")
-    if len(sys.argv) >= 1:
-        DeviceIPAddress = sys.argv[1]
-        TestCmdFilename = ""
-        if len(sys.argv) == 3:
-            TestCmdFilename = sys.argv[2]
-    else:
-        print("You must provide the IP address of the Crestron device.")
-        print("Authentication not currently supported.\n")
+    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.8\n")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-ip", "--iptocheck", help="A single Crestron IP address to build documentation for")
+    parser.add_argument("-alc", "--autolocatecrestron", action="store_true",
+                    help="Automatically locate Crestron devices on all connected subnets and build documentation")    
+    parser.add_argument("-ala", "--autolocateactiveips", default="", type=str,
+                    help="Automatically locate active IPs on a subnet and look for Crestron devices. \n  Example: 174.209.101 as an argument will check 174.209.101.0/24")    
+    parser.add_argument("-atc", "--addtestcommands", default='', 
+                    help="Filename containing additional commands to test for")    
+    args = parser.parse_args()
+    if not args.iptocheck and not args.autolocatecrestron and not args.autolocateactiveips:
+        parser.print_help()
         exit()
-    documenter = CrestronDeviceDocumenter(DeviceIPAddress, TestCmdFilename)
+    
+    documenter = CrestronDeviceDocumenter(args)
     documenter.generate_documentation()

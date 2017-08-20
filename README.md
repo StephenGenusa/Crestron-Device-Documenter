@@ -5,7 +5,7 @@ Generates good looking HTML Documentation for normal and hidden Crestron device 
 July 2017
 
 - Largely rewritten to clean up the code, add new functionality and conform more closely to PEP 8.
-- The program will now take a second command-line parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist.
+- The program will now take a command-line parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist.
 - Regex improvement so that more devices are now supported
 
 August 2017
@@ -13,18 +13,44 @@ August 2017
 - Firmware version regex improved
 - Additional refactoring of code to cleanup code
 - General help capture regex improved to handle more devices
+- Automatic detection of Crestron devices using UDP using -alc option
+- If working via VPN or router that prevents UDP, use the -ala option to determine active devices on network, test each device for Crestron console and build documentation for all devices that provide console
 
-To Do:
+## Example Program Usage ##
 
+**Build documentation for a single Crestron device that provides console:**
+<pre>
+BuildCrestronCommandReference 10.61.101.24
+</pre>
+
+**Build documentation for all Crestron devices on all (computer connected) subnets that respond to UDP and provide a console:**
+<pre>
+BuildCrestronCommandReference -alc
+</pre>
+
+**Build documentation for all devices that are active on 10.61.101.0/24 that provide a Crestron console:**
+<pre>
+BuildCrestronCommandReference -ala 10.61.101
+</pre>
+
+**Build documentation for all devices that are active on 10.61.101.0/24 that provide a Crestron console:**
+<pre>
+BuildCrestronCommandReference -ala 10.61.101
+</pre>
+
+**Build documentation for a single Crestron device that provides console adding any valid commands found in addtlcmds.txt:**
+<pre>
+BuildCrestronCommandReference -ip 10.61.101.24 -atc addtlcmds.txt
+</pre>
+
+
+##To Do##
  - Additional testing and cleanup
- - Incorporate [code to automatically locate most Crestron devices](https://github.com/StephenGenusa/Crestron-List-Devices-On-Network) using UDP broadcast
 
-----------
+## Notes ##
+- Some Crestron devices only support a single console session so be sure Toolbox is completely shut down if running against multiple devices
 - Written using Python 2.7
 - Authentication is not currently supported.
-
-----------
-I suggest you create a batch file for all Crestron devices on a network and let it generate a full set of documentation.
 
 ----------
 
