@@ -39,7 +39,7 @@ BuildCrestronCommandReference -ip 10.61.101.24 -atc addtlcmds.txt
 </pre>
 
 
-##To Do##
+## To Do ##
  - Additional testing and cleanup
 
 ## Notes ##
