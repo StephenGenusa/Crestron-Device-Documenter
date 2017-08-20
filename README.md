@@ -33,11 +33,6 @@ BuildCrestronCommandReference -alc
 BuildCrestronCommandReference -ala 10.61.101
 </pre>
 
-**Build documentation for all devices that are active on 10.61.101.0/24 that provide a Crestron console:**
-<pre>
-BuildCrestronCommandReference -ala 10.61.101
-</pre>
-
 **Build documentation for a single Crestron device that provides console adding any valid commands found in addtlcmds.txt:**
 <pre>
 BuildCrestronCommandReference -ip 10.61.101.24 -atc addtlcmds.txt
