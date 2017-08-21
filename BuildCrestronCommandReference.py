@@ -31,7 +31,6 @@ from __future__ import print_function
 import argparse
 import os
 import re
-import re
 import socket
 import subprocess
 import sys
@@ -104,7 +103,7 @@ class CrestronDeviceDocumenter(object):
         """
         Build a list of devices that respond to ping for a /24 subnet like 17.1.6.{1}:
         """
-        print ("Building list of active IP addresses on subnet {0}\nPlease wait...".format(subnet))
+        print ("Building list of active IP addresses on subnet {0}.0/24\nPlease wait...".format(subnet))
         with open(os.devnull, "wb") as limbo:
             for last_octet in xrange(1, 255):
                 ip = "{0}.{1}".format(subnet, last_octet)
@@ -113,7 +112,7 @@ class CrestronDeviceDocumenter(object):
                 if not result:
                     self.active_ips_to_check.append(ip)
             if self.active_ips_to_check:
-                print("{0} active IPs found on subnet".format(len(self.active_ips_to_check)))
+                print("Located {0} active IPs on subnet".format(len(self.active_ips_to_check)))
 
     def build_list_of_crestronips(self):
         """
@@ -155,6 +154,7 @@ class CrestronDeviceDocumenter(object):
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_address = (self.device_ip_address, 41795)
+            self.sock.settimeout(5.0)
             print("Attempting to connect to %s port %s" % server_address)
             self.sock.connect(server_address)
             return True
@@ -179,17 +179,23 @@ class CrestronDeviceDocumenter(object):
         Determine the device console prompt
         """
         data = ""
-        for _unused in range(0, MAX_RETRIES):
-            self.sock.sendall(CR)
-            data = data + self.sock.recv(BUFF_SIZE)
-            sleep(.25)
-            search = re.findall(r"\r\n([\w-]{3,30})>", data, re.M)
-            if search:
-                self.console_prompt = search[0]
-                self.unpublished_commands_filename = self.console_prompt + ".upc"
-                print("\nConsole prompt is", self.console_prompt)
-                return
+        try:
+            for _unused in range(0, MAX_RETRIES):
+                self.sock.sendall(CR)
+                data += self.sock.recv(BUFF_SIZE)
+                sleep(.25)
+                search = re.findall("[\n\r]([\w-]{3,30})>", data, re.MULTILINE)
+                #self.place_on_win_clipboard(data)
+                #print(hexdump.hexdump(data))
+                if search:
+                    self.console_prompt = search[0]
+                    self.unpublished_commands_filename = self.console_prompt + ".upc"
+                    print("\nConsole prompt is", self.console_prompt)
+                    return True
+        except:
+            pass
         print("Console prompt not found on device.")
+        return False
 
 
     def remove_prompt(self, data, char_limit):
@@ -213,7 +219,6 @@ class CrestronDeviceDocumenter(object):
         data = ""
         sleep(0.2)
         waitcount = 0
-        self.sock.settimeout(1)
         data = self.sock.recv(BUFF_SIZE)
         data = data.replace(message, "")
         while data.find(self.console_prompt, waitforpromptlocation) == -1:
@@ -248,18 +253,15 @@ class CrestronDeviceDocumenter(object):
         Get the help text for a command
         """
         message = command + " ?"
-        # The following three commands don't behave properly
-        # Instead of giving help, they just just execute. The
-        #  first requires a CR to terminate and the second
-        #  generates a report
+        print("trying", message)
+        # The following commands don't behave properly
+        # Instead of giving help, they just just execute.
         if command == "DBGTRANSMITTER":
             return "Sets or clears Debug flags for IR/RF Transmitter"
         if command == "REPORTPPNTABLe":
             return "Displays Cresnet PPN table if available"
         if command == "LOGOFF":
             return "Logs the currently authenticated user out of the system"
-        if command.upper() in ["MACADDRESS", "MACA"]:
-            return "Returns the MAC address of the built-in NIC"
         data = self.send_command_wait_prompt(message, 30)
         if data.upper().find("BAD COMM") > -1 or data.upper().find("INCOMPLETE COMM") > -1:
             return ""
@@ -582,30 +584,35 @@ class CrestronDeviceDocumenter(object):
             self.device_ip_address = ip
             self.initialize_run_variables()
             if self.open_device_connection():
-                try:
-                    self.get_console_prompt()
-                    self.get_firmware_version()
-                    self.get_published_command_list()
-                    self.get_hidden_command_list()
-                    self.test_for_unpublished_commands()
-                    self.write_html_documentation()
-                finally:
-                    self.close_device_connection()
-                    if os.path.isfile(os.path.realpath(self.htmldocfilename)):
-                        webbrowser.open_new_tab("file://" + os.path.realpath(self.htmldocfilename))
-
-
+                if self.get_console_prompt():
+                    if not os.path.isfile(self.console_prompt + ".html") or self.args.overwrite:
+                        try:
+                            self.get_firmware_version()
+                            self.get_published_command_list()
+                            self.get_hidden_command_list()
+                            self.test_for_unpublished_commands()
+                            self.write_html_documentation()
+                        finally:
+                            self.close_device_connection()
+                            if os.path.isfile(os.path.realpath(self.htmldocfilename)):
+                                webbrowser.open_new_tab("file://" + os.path.realpath(self.htmldocfilename))
+                    else:
+                        print("Documentation file already found for ", self.console_prompt, ". Overwrite is off.")
+                
+                
 if __name__ == "__main__":
     # pylint: disable-msg=C0103
     print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.8\n")
     parser = argparse.ArgumentParser()
     parser.add_argument("-ip", "--iptocheck", help="A single Crestron IP address to build documentation for")
     parser.add_argument("-alc", "--autolocatecrestron", action="store_true",
-                    help="Automatically locate Crestron devices on all connected subnets and build documentation")    
+                    help="Automatically locate Crestron devices on all connected subnets and build documentation")
     parser.add_argument("-ala", "--autolocateactiveips", default="", type=str,
-                    help="Automatically locate active IPs on a subnet and look for Crestron devices. \n  Example: 174.209.101 as an argument will check 174.209.101.0/24")    
-    parser.add_argument("-atc", "--addtestcommands", default='', 
-                    help="Filename containing additional commands to test for")    
+                    help="Automatically locate active IPs on a subnet and look for Crestron devices. \n  Example: 174.209.101 as an argument will check 174.209.101.0/24")
+    parser.add_argument("-atc", "--addtestcommands", default='',
+                    help="Filename containing additional commands to test for")
+    parser.add_argument("-ow", "--overwrite", action="store_true", default=False,
+                    help="Overwrite doc file if it already exists. Off by default.")
     args = parser.parse_args()
     if not args.iptocheck and not args.autolocatecrestron and not args.autolocateactiveips:
         parser.print_help()
