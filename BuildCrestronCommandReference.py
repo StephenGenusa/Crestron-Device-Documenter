@@ -253,7 +253,6 @@ class CrestronDeviceDocumenter(object):
         Get the help text for a command
         """
         message = command + " ?"
-        print("trying", message)
         # The following commands don't behave properly
         # Instead of giving help, they just just execute.
         if command == "DBGTRANSMITTER":
