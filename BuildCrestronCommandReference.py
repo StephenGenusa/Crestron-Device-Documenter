@@ -217,7 +217,7 @@ class CrestronDeviceDocumenter(object):
             if search:
                 self.console_prompt = search[0]
                 self.unpublished_commands_filename = self.console_prompt + ".upc"
-                print("\nConsole prompt is", self.console_prompt)
+                print("Console prompt is", self.console_prompt)
                 return True
         #except:
         #    pass
