@@ -35,10 +35,12 @@ import socket
 import subprocess
 import sys
 import textwrap
+import unicodedata
 import webbrowser
 from time import sleep
 #
 import netifaces
+import paramiko
 #import hexdump
 #import pprint
 
@@ -151,15 +153,29 @@ class CrestronDeviceDocumenter(object):
         """
         Open the device connection, attempting port 41795
         """
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_address = (self.device_ip_address, 41795)
-            self.sock.settimeout(5.0)
-            print("Attempting to connect to %s port %s" % server_address)
-            self.sock.connect(server_address)
-            return True
-        except:
-            print("Error: Unable to connect to device.")
+        SOCKET_TIMEOUT = 5.0
+        
+        if not self.args.forcessh:
+            try:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                server_address = (self.device_ip_address, 41795)
+                self.sock.settimeout(SOCKET_TIMEOUT)
+                print("Attempting to connect to %s port %s" % server_address)
+                self.sock.connect(server_address)
+                self.usingssh = False
+                return True
+            except:
+                pass
+        else:
+            self.sshclient = paramiko.client.SSHClient()
+            try:
+                self.sshclient.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                self.sshclient.load_system_host_keys()
+                self.sshclient.connect(self.device_ip_address, port=22, username=self.args.username, password=self.args.password, timeout=SOCKET_TIMEOUT)
+                self.usingssh = True
+                return True
+            except:
+                print("Error: Unable to connect to device.")
         return False
 
 
@@ -169,7 +185,10 @@ class CrestronDeviceDocumenter(object):
         """
         try:
             print("\nProcess complete.")
-            self.sock.close()
+            if self.usingssh:
+                self.sshclient.close()
+            else:
+                self.sock.close()
         except:
             pass
 
@@ -179,21 +198,27 @@ class CrestronDeviceDocumenter(object):
         Determine the device console prompt
         """
         data = ""
-        try:
-            for _unused in range(0, MAX_RETRIES):
+        #try:
+        for _unused in range(0, MAX_RETRIES):
+            if self.usingssh:
+                stdin,stdout,stderr=self.sshclient.exec_command("ver")
+                data = str(stdout.readlines())
+                search = re.findall("([\w-]{3,30})\ ", data, re.MULTILINE)
+            else:
                 self.sock.sendall(CR)
                 data += self.sock.recv(BUFF_SIZE)
-                sleep(.25)
                 search = re.findall("[\n\r]([\w-]{3,30})>", data, re.MULTILINE)
-                #self.place_on_win_clipboard(data)
-                #print(hexdump.hexdump(data))
-                if search:
-                    self.console_prompt = search[0]
-                    self.unpublished_commands_filename = self.console_prompt + ".upc"
-                    print("\nConsole prompt is", self.console_prompt)
-                    return True
-        except:
-            pass
+            
+            sleep(.25)
+            #self.place_on_win_clipboard(data)
+            #print(hexdump.hexdump(data))
+            if search:
+                self.console_prompt = search[0]
+                self.unpublished_commands_filename = self.console_prompt + ".upc"
+                print("\nConsole prompt is", self.console_prompt)
+                return True
+        #except:
+        #    pass
         print("Console prompt not found on device.")
         return False
 
@@ -214,25 +239,30 @@ class CrestronDeviceDocumenter(object):
         """
         Send a command and wait for the console prompt following the specified location
         """
-        message = CR + command + CR
-        self.sock.sendall(message)
-        data = ""
-        sleep(0.2)
-        waitcount = 0
-        data = self.sock.recv(BUFF_SIZE)
-        data = data.replace(message, "")
-        while data.find(self.console_prompt, waitforpromptlocation) == -1:
-            # Deal with newer firmware that executes commands / doesn't return a prompt
-            #   instead of printing help
-            try:
-                sleep(0.2)
-                data += self.sock.recv(BUFF_SIZE)
-            except:
-                self.sock.sendall(CR)
-            waitcount += 1
-            if waitcount == 5:
-                self.sock.sendall(CR)
-                waitcount = 0
+        if self.usingssh:
+            stdin,stdout,stderr=self.sshclient.exec_command(command)
+            data = stdout.readlines()
+            data = "\n".join(data)
+        else:
+            message = CR + command + CR
+            self.sock.sendall(message)
+            data = ""
+            sleep(0.2)
+            waitcount = 0
+            data = self.sock.recv(BUFF_SIZE)
+            data = data.replace(message, "")
+            while data.find(self.console_prompt, waitforpromptlocation) == -1:
+                # Deal with newer firmware that executes commands / doesn't return a prompt
+                #   instead of printing help
+                try:
+                    sleep(0.2)
+                    data += self.sock.recv(BUFF_SIZE)
+                except:
+                    self.sock.sendall(CR)
+                waitcount += 1
+                if waitcount == 5:
+                    self.sock.sendall(CR)
+                    waitcount = 0
         return data
 
 
@@ -241,11 +271,14 @@ class CrestronDeviceDocumenter(object):
         Get the firmware version of the device
         """
         data = self.send_command_wait_prompt("ver", 40)
-        data = data.replace(self.console_prompt + ">", "")
-        search = re.search(r"[\r\n]{1,2}([\w\[\]\.\ \(\),#@-]{20,90})[\r\n]{1,2}", data, re.MULTILINE)
-        if search:
-            self.firmwareversion = search.group().strip()
-            print("Firmware version ", self.firmwareversion)
+        if not self.usingssh:
+            data = data.replace(self.console_prompt + ">", "")
+            search = re.search(r"[\r\n]{1,2}([\w\[\]\.\ \(\),#@-]{20,90})[\r\n]{1,2}", data, re.MULTILINE)
+            if search:
+                self.firmwareversion = search.group().strip()
+        else:
+            self.firmwareversion = data
+        print("Firmware version ", self.firmwareversion)
 
 
     def get_command_help(self, command):
@@ -268,18 +301,20 @@ class CrestronDeviceDocumenter(object):
            data.find("ERROR: Command Blocked from this console type.") > -1 or \
            data == "":
             return "No help available for this command."
-        search = re.findall(r"[\r\n]{1,2}(.{5," + str(len(data)) + "})[\r\n]{1,2}" + \
-                 self.console_prompt + ">", data, re.M|re.S)
-        if search:
-            help_text = search[0].replace(self.console_prompt + ">", ""). \
-                        replace(">", "&gt;").replace("<", "&lt;")
-            if help_text.find(message, 1, 30) > -1:
-                help_text = help_text[len(message) + 2:]
-            reformatted_help_text = ""
-            for line in help_text.split("\n"):
-                reformatted_help_text += textwrap.fill(line, 150) + "\n"
-            return reformatted_help_text
-        return ""
+        if not self.usingssh:
+            search = re.findall(r"[\r\n]{1,2}(.{5," + str(len(data)) + "})[\r\n]{1,2}" + \
+                    self.console_prompt + ">", data, re.M|re.S)
+            if search:
+                help_text = search[0].replace(self.console_prompt + ">", ""). \
+                            replace(">", "&gt;").replace("<", "&lt;")
+                if help_text.find(message, 1, 30) > -1:
+                    help_text = help_text[len(message) + 2:]
+        else:
+            help_text = data
+        reformatted_help_text = ""
+        for line in help_text.split("\n"):
+            reformatted_help_text += textwrap.fill(line, 150) + "\n"
+        return reformatted_help_text
 
 
     def get_command_categories(self):
@@ -603,11 +638,17 @@ if __name__ == "__main__":
     # pylint: disable-msg=C0103
     print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.8\n")
     parser = argparse.ArgumentParser()
-    parser.add_argument("-ip", "--iptocheck", help="A single Crestron IP address to build documentation for")
+    parser.add_argument("-ip", "--iptocheck", help="A single Crestron IP address to build documentation for.")
+    parser.add_argument("-fssh", "--forcessh", action="store_true",
+                    help="Force use of SSH rather than CTP 41795")
+    parser.add_argument("-uid", "--username", default="crestron", type=str,
+                    help="Authentication user name.")
+    parser.add_argument("-pwd", "--password", default="", type=str,
+                    help="Authentication password.")
     parser.add_argument("-alc", "--autolocatecrestron", action="store_true",
-                    help="Automatically locate Crestron devices on all connected subnets and build documentation")
+                    help="Automatically locate Crestron devices on all connected subnets and build documentation.")
     parser.add_argument("-ala", "--autolocateactiveips", default="", type=str,
-                    help="Automatically locate active IPs on a subnet and look for Crestron devices. \n  Example: 174.209.101 as an argument will check 174.209.101.0/24")
+                    help="Automatically locate active IPs on a subnet and look for Crestron devices. Example: 174.209.101 as an argument will check 174.209.101.0/24.")
     parser.add_argument("-atc", "--addtestcommands", default='',
                     help="Filename containing additional commands to test for")
     parser.add_argument("-ow", "--overwrite", action="store_true", default=False,

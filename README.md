@@ -15,12 +15,18 @@ August 2017
 - General help capture regex improved to handle more devices
 - Automatic detection of Crestron devices using UDP using -alc option
 - If working via VPN or router that prevents UDP, use the -ala option to determine active devices on network, test each device for Crestron console and build documentation for all devices that provide console
+- Support for SSH added (first pass; needs testing)
 
 ## Example Program Usage ##
 
 **Build documentation for a single Crestron device that provides console:**
 <pre>
-BuildCrestronCommandReference 10.61.101.24
+BuildCrestronCommandReference -ip 10.61.101.24
+</pre>
+
+**Build documentation for a single Crestron device using SSH:**
+<pre>
+BuildCrestronCommandReference -ip 10.61.101.24 -fssh -uid cresuser -pwd pptron9
 </pre>
 
 **Build documentation for all Crestron devices on all (computer connected) subnets that respond to UDP and provide a console:**
@@ -45,7 +51,6 @@ BuildCrestronCommandReference -ip 10.61.101.24 -atc addtlcmds.txt
 ## Notes ##
 - Some Crestron devices only support a single console session so be sure Toolbox is completely shut down if running against multiple devices
 - Written using Python 2.7
-- Authentication is not currently supported.
 
 ----------
 
