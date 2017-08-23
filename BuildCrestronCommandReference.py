@@ -35,7 +35,6 @@ import socket
 import subprocess
 import sys
 import textwrap
-import unicodedata
 import webbrowser
 from time import sleep
 #
@@ -45,6 +44,8 @@ import paramiko
 #import pprint
 
 BUFF_SIZE = 20000
+CTP_PORT = 41795
+SSH_PORT = 22
 MAX_RETRIES = 3
 CR = "\r"
 
@@ -160,7 +161,7 @@ class CrestronDeviceDocumenter(object):
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 server_address = (self.device_ip_address, 41795)
                 self.sock.settimeout(SOCKET_TIMEOUT)
-                print("Attempting to connect to %s port %s" % server_address)
+                print("Attempting to connect to {0} port {1}".format(self.device_ip_address, CTP_PORT))
                 self.sock.connect(server_address)
                 self.usingssh = False
                 return True
@@ -171,6 +172,7 @@ class CrestronDeviceDocumenter(object):
             try:
                 self.sshclient.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 self.sshclient.load_system_host_keys()
+                print("Attempting to connect to {0} port {1}".format(self.device_ip_address, SSH_PORT))
                 self.sshclient.connect(self.device_ip_address, port=22, username=self.args.username, password=self.args.password, timeout=SOCKET_TIMEOUT)
                 self.usingssh = True
                 return True
@@ -242,7 +244,7 @@ class CrestronDeviceDocumenter(object):
         if self.usingssh:
             stdin,stdout,stderr=self.sshclient.exec_command(command)
             data = stdout.readlines()
-            data = "\n".join(data)
+            data = "".join(data)
         else:
             message = CR + command + CR
             self.sock.sendall(message)
@@ -277,7 +279,7 @@ class CrestronDeviceDocumenter(object):
             if search:
                 self.firmwareversion = search.group().strip()
         else:
-            self.firmwareversion = data
+            self.firmwareversion = data.strip()
         print("Firmware version ", self.firmwareversion)
 
 
@@ -310,7 +312,7 @@ class CrestronDeviceDocumenter(object):
                 if help_text.find(message, 1, 30) > -1:
                     help_text = help_text[len(message) + 2:]
         else:
-            help_text = data
+            help_text = data.replace("\r\n\r\n", "\r\n")
         reformatted_help_text = ""
         for line in help_text.split("\n"):
             reformatted_help_text += textwrap.fill(line, 150) + "\n"
