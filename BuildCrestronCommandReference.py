@@ -43,13 +43,13 @@ import paramiko
 #import hexdump
 #import pprint
 
-BUFF_SIZE = 20000
-CTP_PORT = 41795
 SSH_PORT = 22
+CIP_PORT = 41794
+CTP_PORT = 41795
 MAX_RETRIES = 3
+BUFF_SIZE = 20000
 CR = "\r"
 BROADCAST_IP = '255.255.255.255'
-CIP_PORT = 41794
 UDP_MSG = "\x14\x00\x00\x00\x01\x04\x00\x03\x00\x00\x66\x65\x65\x64" + \
     ("\x00" * 252)
 
@@ -70,6 +70,8 @@ class CrestronDeviceDocumenter(object):
         self.preseed_command_list = []
         self.possible_commands_filename = args.addtestcommands
         self.preseed_commands_filename = "preseed.upc"
+        self.do_not_execute_commands_filename = "donotexec.upc"
+        self.do_not_execute_command_list = []
         self.firmwareversion = ""
         self.console_prompt = ""
         self.htmldocfilename = ""
@@ -298,15 +300,10 @@ class CrestronDeviceDocumenter(object):
         """
         Get the help text for a command
         """
+        if command in self.do_not_execute_command_list:
+            return self.help_dict[cmd]
+        
         message = command + " ?"
-        # The following commands don't behave properly
-        # Instead of giving help, they just just execute.
-        if command == "DBGTRANSMITTER":
-            return "Sets or clears Debug flags for IR/RF Transmitter"
-        if command == "REPORTPPNTABLe":
-            return "Displays Cresnet PPN table if available"
-        if command == "LOGOFF":
-            return "Logs the currently authenticated user out of the system"
         data = self.send_command_wait_prompt(message, 30)
         if data.upper().find("BAD COMM") > -1 or data.upper().find("INCOMPLETE COMM") > -1:
             return ""
@@ -391,7 +388,8 @@ class CrestronDeviceDocumenter(object):
                     command = search2[0][0].strip()
                     if command not in command_list and command <> "Add":
                         command_list.append(command)
-                        command_dict[command] = search2[0][2].strip()
+                        if command not in command_dict:
+                            command_dict[command] = search2[0][2].strip()
 
 
     def get_published_command_list(self):
@@ -463,9 +461,34 @@ class CrestronDeviceDocumenter(object):
                 self.preseed_command_list.append(command1)
             if command1 not in self.unpublished_command_list:
                 self.unpublished_command_list.append(command1)
-                self.help_dict[command1] = ""
+                if command1 not in self.help_dict:
+                    self.help_dict[command1] = ""
                 print(command1 + " ", end="")
                 sys.stdout.flush()
+
+
+    def load_do_not_execute_command_list(self):
+        """
+        Load commands not to execute from a text file
+        File format:
+          CMD1FORM1,CMD1FORM2~Short help description|Long help description
+          CMD2FORM1,CMD2FORM2~Short help description|Long help description
+        """
+        if os.path.isfile(self.do_not_execute_commands_filename):
+            print ("Loading and parsing do-not-execute commands")
+            with open(self.do_not_execute_commands_filename, "r") as cmd_file:
+                upc_lines = cmd_file.readlines()
+                for item in upc_lines:
+                    if item.strip != "":
+                        item = item.strip()
+                        if item[0] != "#":
+                            cmd_forms, short_long_help = item.split("~")
+                            cmd_forms = cmd_forms.split(",")
+                            for cmd in cmd_forms:
+                                if cmd not in self.do_not_execute_command_list:
+                                    self.do_not_execute_command_list.append(cmd)
+                                if cmd not in self.help_dict:
+                                    self.help_dict[cmd] = short_long_help
 
 
     def load_possible_command_list(self):
@@ -549,6 +572,7 @@ class CrestronDeviceDocumenter(object):
         if self.unpublished_command_list:
             complete_command_list.extend(self.unpublished_command_list)
 
+        print("")
         uniq_cmds = set(complete_command_list)
         complete_command_list = list(uniq_cmds)
         complete_command_list.sort()
@@ -591,9 +615,7 @@ class CrestronDeviceDocumenter(object):
 
         htmlfile.write("<table border=\"1\" cellpadding=\"5\" cellspacing=\"5\" style=\"border-collapse:collapse;\" width=\"100%\">\n")
 
-        itemcounter = 0
-        print("")
-        for command in complete_command_list:
+        for index, command in enumerate(complete_command_list):
             if command in self.unpublished_command_list:
                 color = unpublished_command_color
                 class_name = "unpub"
@@ -603,17 +625,21 @@ class CrestronDeviceDocumenter(object):
             else:
                 color = special_command_color
                 class_name = "hid"
-            command_help = self.get_command_help(command)
+            if command in self.do_not_execute_command_list:
+                short_help = self.help_dict[command].split("|")[0]
+                long_help = self.help_dict[command].split("|")[1]
+            else:
+                short_help = self.help_dict[command]
+                long_help = self.get_command_help(command)
             htmlfile.write("<tr class=\"" + class_name + "\" bgcolor=\"#C0C0C0\">\n  <th width=\"20%\"><font color=\"" +
                            color + "\">" + command +
                            "</font></th>\n  <th align=\"left\"><font color=\"" +
-                           color + "\">&nbsp;" + self.help_dict[command] +
+                           color + "\">&nbsp;" + short_help +
                            "</font></th>\n</tr>\n")
-            htmlfile.write("<tr>\n  <td colspan=\"2\">\n<pre>" + command_help +
+            htmlfile.write("<tr>\n  <td colspan=\"2\">\n<pre>" + long_help +
                            "</pre>\n</td>\n</tr>\n")
-            print("(" + str(itemcounter+1) + ")" + command + " ", end="")
+            print("(" + str(index) + ")" + command + " ", end="")
             sys.stdout.flush()
-            itemcounter += 1
         htmlfile.write("</table>\n</font>\n")
         htmlfile.write("</body>\n</html>")
 
@@ -629,6 +655,7 @@ class CrestronDeviceDocumenter(object):
             self.build_list_of_activeips(self.args.autolocateactiveips)
         for self.device_ip_address in self.active_ips_to_check:
             self.initialize_run_variables()
+            self.load_do_not_execute_command_list()
             if self.open_device_connection():
                 if self.get_console_prompt():
                     if not os.path.isfile(self.console_prompt + ".html") or self.args.overwrite:
