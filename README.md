@@ -16,6 +16,8 @@ August 2017
 - Automatic detection of Crestron devices using UDP using -alc option
 - If working via VPN or router that prevents UDP, use the -ala option to determine active devices on network, test each device for Crestron console and build documentation for all devices that provide console
 - Support for SSH added (first pass; needs additional testing)
+- Prevent command execution when console firmware ignores the ? in "command ?"
+- Customize the long and short help descriptions. See text file donotexec.upc
 
 ## Example Program Usage ##
 
