@@ -676,7 +676,7 @@ class CrestronDeviceDocumenter(object):
 
 if __name__ == "__main__":
     # pylint: disable-msg=C0103
-    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.8\n")
+    print("\nStephen Genusa's Crestron Device Command Documentation Builder 1.81\n")
     parser = argparse.ArgumentParser()
     parser.add_argument("-ip", "--iptocheck", help="A single Crestron IP address to build documentation for.")
     parser.add_argument("-fssh", "--forcessh", action="store_true",
