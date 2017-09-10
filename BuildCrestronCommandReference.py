@@ -311,6 +311,7 @@ class CrestronDeviceDocumenter(object):
            data.find("ERROR: Command Blocked from this console type.") > -1 or \
            data == "":
             return "No help available for this command."
+        help_text = ""
         if not self.usingssh:
             search = re.findall(r"[\r\n]{1,2}(.{5," + str(len(data)) + "})[\r\n]{1,2}" + \
                     self.console_prompt + ">", data, re.M|re.S)

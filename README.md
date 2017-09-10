@@ -5,18 +5,18 @@ Generates good looking HTML Documentation for normal and hidden Crestron device 
 July 2017
 
 - Largely rewritten to clean up the code, add new functionality and conform more closely to PEP 8.
-- The program will now take a command-line parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist.
+- The program now takes a command-line parameter, a filename that points to a text file containing known or "word of mouth" commands that are not included in the existing help commands. These will be tested for, saved to a .upc file, and added to the HTML documentation if they exist.
 - Regex improvement so that more devices are now supported
 
 August 2017
 
 - Firmware version regex improved
-- Additional refactoring of code to cleanup code
+- Additional refactoring to cleanup code
 - General help capture regex improved to handle more devices
 - Automatic detection of Crestron devices using UDP using -alc option
 - If working via VPN or router that prevents UDP, use the -ala option to determine active devices on network, test each device for Crestron console and build documentation for all devices that provide console
 - Support for SSH added (first pass; needs additional testing)
-- Prevent command execution when console firmware ignores the ? in "command ?"
+- Prevent command execution when console ignores the ? in "command ?". See text file donotexec.upc
 - Customize the long and short help descriptions. See text file donotexec.upc
 
 ## Example Program Usage ##
