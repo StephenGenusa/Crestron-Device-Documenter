@@ -231,6 +231,9 @@ class CrestronDeviceDocumenter(object):
                 self.console_prompt = search[0]
                 self.unpublished_commands_filename = self.console_prompt + ".upc"
                 print("Console prompt is", self.console_prompt)
+                if self.console_prompt == "MERCURY":
+                    print("Mercury currently unsupported due to Crestron engin.err.uity")
+                    exit()
                 return True
         #except:
         #    pass
