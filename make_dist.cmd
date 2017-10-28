@@ -1,0 +1,1 @@
+\python27\scripts\pyinstaller.exe -F BuildCrestronCommandReference.py
